@@ -1,0 +1,12 @@
+*.egg-info
+data
+**/__pycache__/
+**/.ipynb_checkpoints/
+.spyproject
+*.drawio
+results
+**/outputs
+.DS_Store
+.idea
+
+# Temporary
