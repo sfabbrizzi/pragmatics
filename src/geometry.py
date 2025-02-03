@@ -19,6 +19,6 @@ if __name__ == "__main__":
 
     assert space.shape == (3, 3)
 
-    v = torch.zeros(3)
+    v = torch.ones(3)
 
     print(compute_distances(v, space))
