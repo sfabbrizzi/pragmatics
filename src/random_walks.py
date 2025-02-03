@@ -61,6 +61,19 @@ class Random_Walk():
         self.softmax = Softmax(dim=0)
 
     def step(self, v: int) -> int:
+        """performs a step strating from a given
+        point in space.
+
+        Parameters
+        ----------
+        v : int
+            index of the starting point.
+
+        Returns
+        -------
+        int
+            index of the new point reached
+        """
         distances = compute_distances(
             self.space[v],
             self.space[self.available_index]
@@ -75,19 +88,41 @@ class Random_Walk():
         return v_new
 
     def walk(self, steps: int) -> List[int]:
+        """perform a walk of a given numebr of steps
+        starting from the last registered step.
+
+        Parameters
+        ----------
+        steps : int
+            number of steps.
+
+        Returns
+        -------
+        List[int]
+            returns the list of steps done
+
+        Raises
+        ------
+        ValueError
+            raises error if too many steps are rquested and
+            space is not big enough
+        """
         if steps > len(self.available_index):
             raise ValueError("too many steps, space not big enough")
+
+        current_walk = [self.walk_list[-1]]
 
         for _ in range(0, steps):
             v_new = self.step(self.walk_list[-1])
             self.walk_list.append(v_new)
+            current_walk.append(v_new)
 
             self.available_index = np.delete(
                 self.available_index,
                 np.where(self.available_index == v_new)[0],
             )
 
-        return self.walk_list
+        return current_walk
 
 
 if __name__ == "__main__":
@@ -109,3 +144,5 @@ if __name__ == "__main__":
     rw = Random_Walk(space, v0)
     print(rw.walk(2))
     print(rw.walk(2))
+
+    print(rw.walk_list)
