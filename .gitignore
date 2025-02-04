@@ -8,5 +8,8 @@ results
 **/outputs
 .DS_Store
 .idea
+.coverage
+.vscode
+.pytest_cache
 
 # Temporary

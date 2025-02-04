@@ -13,11 +13,11 @@ from typing import Optional, List
 from src.geometry import compute_distances
 
 
-class Random_Walk():
+class RandomWalk():
     def __init__(
         self,
         space: torch.Tensor,
-        v0: Optional[int]
+        v0: Optional[int] = None
     ) -> None:
         """Implements a random walk on a set of points
         in a embedding space.
@@ -47,7 +47,7 @@ class Random_Walk():
             self.space = space
 
         if v0 is None:
-            self.v0 = random.randint(0, space.shape[0])
+            self.v0 = random.randint(0, space.shape[0]-1)
         elif isinstance(v0, int) and (v0 >= 0) and (v0 < space.shape[0]):
             self.v0 = v0
         else:
@@ -57,7 +57,7 @@ class Random_Walk():
             )
         self.walk_list = [self.v0]
 
-        self.available_index = np.delete(np.arange(space.shape[0]), v0)
+        self.available_index = np.delete(np.arange(space.shape[0]), self.v0)
         self.softmax = Softmax(dim=0)
 
     def step(self, v: int) -> int:
@@ -72,8 +72,16 @@ class Random_Walk():
         Returns
         -------
         int
-            index of the new point reached
+            index of the new point reached.
+
+        Raises
+        ------
+        ValueError
+            the index v must be in [0, self.space.shape[0]).
         """
+        if v not in range(0, self.space.shape[0]):
+            raise ValueError("the index v must be in [0, self.space.shape[0])")
+
         distances = compute_distances(
             self.space[v],
             self.space[self.available_index]
@@ -104,7 +112,7 @@ class Random_Walk():
         Raises
         ------
         ValueError
-            raises error if too many steps are rquested and
+            raises error if too many steps are requested and
             space is not big enough
         """
         if steps > len(self.available_index):
@@ -123,26 +131,3 @@ class Random_Walk():
             )
 
         return current_walk
-
-
-if __name__ == "__main__":
-
-    space: torch.Tensor = torch.Tensor([
-        [0, 0, 0],
-        [0, 0, 0],
-        [1, 1, 1],
-        [65, 0, 99],
-        [4, 6, 7],
-        [9, 4, 5]
-    ])
-    space = torch.unique(space, dim=0)
-
-    assert space.shape == (5, 3)
-
-    v0: int = 2
-
-    rw = Random_Walk(space, v0)
-    print(rw.walk(2))
-    print(rw.walk(2))
-
-    print(rw.walk_list)
