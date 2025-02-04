@@ -1,0 +1,6 @@
+root: "../"
+# input: "data/sdxl-turbo/postal_worker" 
+input: "data/flux-schnell/german_man"
+# output: "data/embeddings/sdxl-turbo/postal_worker"
+output: "data/embeddings/flux-schnell/german_man"
+
