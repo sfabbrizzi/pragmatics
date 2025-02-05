@@ -1,6 +1,10 @@
-root: "../"
-# input: "data/sdxl-turbo/postal_worker" 
-input: "data/flux-schnell/german_man"
-# output: "data/embeddings/sdxl-turbo/postal_worker"
-output: "data/embeddings/flux-schnell/german_man"
+paths:
+  root: "../"
+  input: "results/postal_worker_descriptions.csv"
+  # input: "results/german_man_descriptions.csv"
+  output: "results/postal_worker_chuncks.csv"
+  # output: "results/german_man_chuncks.csv"
+  embeddings: "data/embeddings/sdxl-turbo/postal_worker"
 
+embeddings:
+  model: "mxbai-embed-large"

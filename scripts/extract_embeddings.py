@@ -2,12 +2,11 @@
 import torch
 import hydra
 import os
+import ollama
+import pandas as pd
 
-# transformers
-from transformers import CLIPImageProcessor, CLIPModel
-
-# images
-from PIL import Image
+# text processing
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 # utils
 from pathlib import Path
@@ -15,7 +14,7 @@ from pathlib import Path
 # typing
 from omegaconf import DictConfig
 from os import PathLike
-from numpy.typing import ArrayLike
+from typing import List
 
 
 @hydra.main(
@@ -24,42 +23,52 @@ from numpy.typing import ArrayLike
     config_name="extract_embeddings"
 )
 def main(cfg: DictConfig) -> None:
-    device: str = "mps"
-    torch_dtype: torch.dtype = torch.float16
 
-    model = CLIPModel.from_pretrained(
-        "openai/clip-vit-base-patch32",
-        device_map=device,
-        torch_dtype=torch_dtype,
-    )
+    ROOT: PathLike = Path(cfg.paths.root)
+    input_path: PathLike = ROOT / cfg.paths.input
+    output_path: PathLike = ROOT / cfg.paths.output
 
-    processor = CLIPImageProcessor.from_pretrained(
-        "openai/clip-vit-base-patch32")
+    df_descr: pd.DataFrame = pd.read_csv(input_path)
+    df: pd.DataFrame = pd.DataFrame(
+        columns=["image", "chunk_id", "chunk", "embedding_file"])
 
-    ROOT: PathLike = Path(cfg.root)
-    input_path: PathLike = ROOT / cfg.input
+    for i in df_descr.index:
+        image: str = df_descr.loc[i, "image"]
+        descr: str = df_descr.loc[i, "description"]
 
-    output_path: PathLike = ROOT / cfg.output
-    os.makedirs(output_path, exist_ok=True)
+        text_splitter = RecursiveCharacterTextSplitter(
+            separators=["\n\n", "\n"],
+            chunk_size=256,
+            chunk_overlap=0,
+            length_function=len,
+        )
+        chunks: List[str] = text_splitter.split_text(descr)
 
-    for file_name in os.listdir(input_path):
-        if file_name[-4:] != ".png" or file_name[0] == ".":
-            continue
-        image: Image = Image.open(input_path / file_name)
+        for j in range(len(chunks)):
+            chunk = chunks[j]
+            chunk_embedding: ollama.EmbeddingsResponse = ollama.embeddings(
+                model=cfg.embeddings.model,
+                prompt=chunk
+            )
 
-        inputs: ArrayLike = processor(
-            image
-        )["pixel_values"][0].reshape(1, 3, 224, -1)
-        inputs: torch.Tensor = torch.from_numpy(inputs)
+            chunk_embedding: torch.Tensor = torch.Tensor(
+                chunk_embedding.embedding
+            )
 
-        with torch.no_grad():
-            outputs: torch.Tensor = model.get_image_features(
-                inputs.to(device)
-            ).cpu().reshape(-1)
+            embedding_path = ROOT / cfg.paths.embeddings
+            os.makedirs(embedding_path, exist_ok=True)
 
-            torch.save(outputs, output_path / f"{file_name[:-4]}.pt")
+            torch.save(chunk, embedding_path /
+                       f"{"_".join(image.split("/")[-1].split("."))}_{j}.pt")
+            df.loc[len(df)] = [
+                image,
+                j,
+                chunk,
+                str(embedding_path /
+                    f"{"_".join(image.split("/")[-1].split("."))}_{j}.pt")
+            ]
 
-    print(f"extraction of {cfg.input} done!")
+        df.to_csv(output_path)
 
 
 if __name__ == "__main__":
