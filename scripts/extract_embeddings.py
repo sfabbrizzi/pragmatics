@@ -37,7 +37,7 @@ def main(cfg: DictConfig) -> None:
         descr: str = df_descr.loc[i, "description"]
 
         text_splitter = RecursiveCharacterTextSplitter(
-            separators=["\n\n", "\n"],
+            separators=["\n\n", "\n", "."],
             chunk_size=256,
             chunk_overlap=0,
             length_function=len,
@@ -45,14 +45,14 @@ def main(cfg: DictConfig) -> None:
         chunks: List[str] = text_splitter.split_text(descr)
 
         for j in range(len(chunks)):
-            chunk = chunks[j]
-            chunk_embedding: ollama.EmbeddingsResponse = ollama.embeddings(
+            chunk = chunks[j].strip(". ")
+            chunk_embedding: List[float] = ollama.embeddings(
                 model=cfg.embeddings.model,
                 prompt=chunk
-            )
+            ).embedding
 
             chunk_embedding: torch.Tensor = torch.Tensor(
-                chunk_embedding.embedding
+                chunk_embedding
             )
 
             embedding_path = ROOT / cfg.paths.embeddings
