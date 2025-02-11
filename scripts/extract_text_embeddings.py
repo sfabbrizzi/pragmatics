@@ -20,7 +20,7 @@ from typing import List
 @hydra.main(
     version_base=None,
     config_path="config",
-    config_name="extract_embeddings"
+    config_name="extract_text_embeddings"
 )
 def main(cfg: DictConfig) -> None:
 
@@ -58,11 +58,12 @@ def main(cfg: DictConfig) -> None:
             embedding_path = ROOT / cfg.paths.embeddings
             os.makedirs(embedding_path, exist_ok=True)
 
-            torch.save(chunk, embedding_path /
+            torch.save(chunk_embedding, embedding_path /
                        f"{"_".join(image.split("/")[-1].split("."))}_{j}.pt")
+
             df.loc[len(df)] = [
                 image,
-                j,
+                f"{"_".join(image.split("/")[-1].split("."))}_{j}",
                 chunk,
                 str(embedding_path /
                     f"{"_".join(image.split("/")[-1].split("."))}_{j}.pt")

@@ -2,9 +2,9 @@ paths:
   root: "../"
   input: "results/postal_worker_descriptions.csv"
   # input: "results/german_man_descriptions.csv"
-  output: "results/postal_worker_chuncks.csv"
-  # output: "results/german_man_chuncks.csv"
-  embeddings: "data/embeddings/sdxl-turbo/postal_worker"
+  output: "results/postal_worker_chunks.csv"
+  # output: "results/german_man_chunks.csv"
+  embeddings: "data/embeddings/text/sdxl-turbo/postal_worker"
 
 embeddings:
   model: "mxbai-embed-large"

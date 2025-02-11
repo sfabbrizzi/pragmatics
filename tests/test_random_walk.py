@@ -71,10 +71,12 @@ def test_step(space: torch.Tensor) -> None:
 
     new_v: int = rw.step(4)
     new_v1: int = rw.step(rw.v0)
+    new_v2: int = rw.step(2, uniform=True)
 
     assert len(rw.available_index) == n_available
     assert isinstance(new_v, int)
     assert isinstance(new_v1, int)
+    assert isinstance(new_v2, int)
 
     with pytest.raises(ValueError):
         rw.step(81)
@@ -90,7 +92,7 @@ def test_walk(space: torch.Tensor) -> None:
 
     rw.walk(2)
     assert len(rw.available_index) == len(space)-3
-    rw.walk(2)
+    rw.walk(2, first_step_unifrom=True)
     assert len(rw.available_index) == len(space)-5
 
     with pytest.raises(ValueError):

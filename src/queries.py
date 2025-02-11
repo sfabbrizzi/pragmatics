@@ -1,6 +1,7 @@
 # general imports
 import torch
 import ollama
+import os
 import pandas as pd
 
 # pytorch
@@ -11,7 +12,7 @@ from pathlib import Path
 
 # typing
 from os import PathLike
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 
 def load_embedding(
@@ -24,11 +25,16 @@ def load_embedding(
 
 def load_embeddings(
     root: PathLike,
-    df: pd.DataFrame
+    df: Optional[pd.DataFrame] = None
 ) -> torch.Tensor:
+    if df is None:
+        files = [f for f in os.listdir(root)
+                 if f[-3:] == ".pt" and f[0] != "."]
+    else:
+        files = df.embedding_file
 
     paths: List[PathLike] = [Path(root) / embeddings_file
-                             for embeddings_file in df.embedding_file]
+                             for embeddings_file in files]
     tensors: List[torch.Tensor] = [torch.load(path) for path in paths]
 
     embedding_space: torch.Tensor = torch.stack(tensors)
@@ -41,19 +47,19 @@ def query(
     prompt: str,
     embedding_space: torch.Tensor,
     top: Optional[int] = None
-) -> torch.Tensor:
+) -> Tuple[torch.Tensor]:
     # extract embedding from prompt
-    query_embedding: List[float] = ollama.EmbeddingsResponse(
+    query_embedding: List[float] = ollama.embed(
         model=model,
-        prompt=prompt
-    ).embedding
+        input=prompt
+    ).embeddings
     query_embedding: torch.Tensor = torch.Tensor(query_embedding)
 
     # compute similarity
     similarities = F.cosine_similarity(query_embedding, embedding_space)
-    _, sorted_indices = torch.sort(similarities, descending=True)
+    sorted_sim, sorted_indices = torch.sort(similarities, descending=True)
 
-    return sorted_indices[:top]
+    return sorted_sim[:top], sorted_indices[:top],
 
 
 if __name__ == "__main__":

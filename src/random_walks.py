@@ -60,7 +60,7 @@ class RandomWalk():
         self.available_index = np.delete(np.arange(space.shape[0]), self.v0)
         self.softmax = Softmax(dim=0)
 
-    def step(self, v: int) -> int:
+    def step(self, v: int, uniform: bool = False) -> int:
         """performs a step strating from a given
         point in space.
 
@@ -68,6 +68,10 @@ class RandomWalk():
         ----------
         v : int
             index of the starting point.
+
+        uniform : bool, default False
+            if true the step next step is drawn
+            from uniform probability.
 
         Returns
         -------
@@ -82,20 +86,31 @@ class RandomWalk():
         if v not in range(0, self.space.shape[0]):
             raise ValueError("the index v must be in [0, self.space.shape[0])")
 
-        distances = compute_distances(
-            self.space[v],
-            self.space[self.available_index]
-        )
-        probabilities = self.softmax(distances)
+        if not uniform:
+            distances = compute_distances(
+                self.space[v],
+                self.space[self.available_index]
+            )
+            probabilities = self.softmax(-distances)
 
-        v_new = np.random.choice(
-            self.available_index,
-            p=probabilities.numpy()
-        ).item()
+            v_new = np.random.choice(
+                self.available_index,
+                p=probabilities.numpy()
+            ).item()
+        else:
+            v_new = np.random.choice(
+                self.available_index,
+                p=np.ones_like(self.available_index) /
+                len(self.available_index)
+            ).item()
 
         return v_new
 
-    def walk(self, steps: int) -> List[int]:
+    def walk(
+            self,
+            steps: int,
+            first_step_unifrom: bool = False
+    ) -> List[int]:
         """perform a walk of a given numebr of steps
         starting from the last registered step.
 
@@ -103,6 +118,9 @@ class RandomWalk():
         ----------
         steps : int
             number of steps.
+
+        first_step_uniform: bool, default False
+            if true, first  is drawn uniformely.
 
         Returns
         -------
@@ -113,15 +131,23 @@ class RandomWalk():
         ------
         ValueError
             raises error if too many steps are requested and
-            space is not big enough
+            the space is not big enough.
         """
         if steps > len(self.available_index):
-            raise ValueError("too many steps, space not big enough")
+            raise ValueError("too many steps, the space is not big enough.")
 
         current_walk = [self.walk_list[-1]]
 
-        for _ in range(0, steps):
-            v_new = self.step(self.walk_list[-1])
+        for i in range(0, steps):
+            if i == 0:
+                v_new = self.step(
+                    self.walk_list[-1],
+                    uniform=first_step_unifrom
+                )
+            else:
+                v_new = self.step(
+                    self.walk_list[-1],
+                    uniform=False)
             self.walk_list.append(v_new)
             current_walk.append(v_new)
 
