@@ -6,8 +6,8 @@ import pandas as pd
 import pydantic
 
 # vqa
-# from PIL import Image
-# from transformers import pipeline
+from PIL import Image
+from transformers import pipeline
 
 # utils
 from pathlib import Path
@@ -45,6 +45,7 @@ DF_CHUNKS: PathLike = ROOT / "results/postal_worker_chunks.csv"
 # OTHERS
 SEED: int = 1_792
 N_STEPS: int = 4
+MAX_ITER: int = 4
 
 # Seeding
 seed_everything(SEED)
@@ -62,7 +63,10 @@ image_emb_space: torch.Tensor = torch.stack(
 rw: RandomWalk = RandomWalk(space=image_emb_space, v0=None)
 first_walk: bool = True
 
-while True:
+report: str = "# Report\n\n"
+
+for i in range(MAX_ITER):
+    report += f"## Step {i}\n\n"
     # STEP 1: Random Walk
     if first_walk:
         steps = rw.walk(N_STEPS)
@@ -73,6 +77,10 @@ while True:
             first_step_unifrom=True
         )[1:]
     print(steps)
+    report += "### Walked images:\n"
+    for s in steps:
+        report += f"![{s}.png](../data/sdxl-turbo/postal_worker/{s}.png)"
+    report += "\n\n"
 
     # STEP 2: Retrieve text
     chunks = df_chunks.merge(
@@ -140,51 +148,58 @@ while True:
         format=Response.model_json_schema()
     )
     response = Response.model_validate_json(response['message']['content'])
-    print(response.traits)
-    print("\n")
+    report += f"### Common traits\n{response.traits}\n"
+
     # STEP 4: Formulate Questions
     # STEP 4.1: Ask user to formulate questions
     questions = response.questions
 
     # STEP 4.2: VQA
-    # vqa_pipeline = pipeline(
-    #     "visual-question-answering",
-    #     model="dandelin/vilt-b32-finetuned-vqa",
-    #     device="mps" if torch.backends.mps.is_available() else "cpu",
-    #     use_fast=True
-    # )
-
-    # answers = {q: defaultdict(int) for q in questions}
-    # for image_name in os.listdir(IMAGES):
-    #     for q in questions:
-    #         image = Image.open(IMAGES / image_name)
-
-    #         vqa_resp = vqa_pipeline(image, q, top_k=1)[0]
-    #         if vqa_resp["score"] >= .9:
-    #             answers[q][vqa_resp["answer"]] += 1
-
+    report += "### Answers\n"
     answers = {q: defaultdict(int) for q in questions}
+
+    vqa_pipeline = pipeline(
+        "visual-question-answering",
+        model="dandelin/vilt-b32-finetuned-vqa",
+        device="mps" if torch.backends.mps.is_available() else "cpu",
+        use_fast=True
+    )
+
     for image_name in os.listdir(IMAGES):
         for q in questions:
-            response = ollama.chat(
-                model='llava-phi3',
-                messages=[{
-                    'role': 'user',
-                    'content': q,
-                    'images': [IMAGES / image_name]
-                }],
-                format=Answer.model_json_schema()
-            )
-            answ = Answer.model_validate_json(
-                response['message']['content']
-            ).answer
-            print(q, answ)
+            image = Image.open(IMAGES / image_name)
 
-            answers[q][answ] += 1
+            vqa_resp = vqa_pipeline(image, q, top_k=1)[0]
+            if vqa_resp["score"] >= .9:
+                answers[q][vqa_resp["answer"]] += 1
 
-    print(answers)
+    # for image_name in os.listdir(IMAGES):
+    #     for q in questions:
+    #         response = ollama.chat(
+    #             model='llava-phi3',
+    #             messages=[{
+    #                 'role': 'user',
+    #                 'content': q,
+    #                 'images': [IMAGES / image_name]
+    #             }],
+    #             format=Answer.model_json_schema()
+    #         )
+    #         answ = Answer.model_validate_json(
+    #             response['message']['content']
+    #         ).answer
+
+    #         answers[q][answ] += 1
+
+    for q in questions:
+        report += q + " --> "
+        for answ, no in answers[q].items():
+            report += answ + f": {no}" + "\t"
+        report += "\n"
 
     # Step 5: Continue walking
-    continue_walk: str = input("Press y to continue walking ")
-    if continue_walk != "y":
-        break
+    # continue_walk: str = input("Press y to continue walking ")
+    # if continue_walk != "y":
+    #     break
+
+with open("../results/walk_report.md", "w") as f:
+    f.write(report)
