@@ -46,6 +46,8 @@ def main(cfg: DictConfig) -> None:
 
         for j in range(len(chunks)):
             chunk = chunks[j].strip(". ")
+            if chunk == "":
+                continue
             chunk_embedding: List[float] = ollama.embeddings(
                 model=cfg.embeddings.model,
                 prompt=chunk
@@ -54,6 +56,7 @@ def main(cfg: DictConfig) -> None:
             chunk_embedding: torch.Tensor = torch.Tensor(
                 chunk_embedding
             )
+            assert chunk_embedding.shape == (1024,)
 
             embedding_path = ROOT / cfg.paths.embeddings
             os.makedirs(embedding_path, exist_ok=True)

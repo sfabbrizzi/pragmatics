@@ -30,7 +30,10 @@ def load_embeddings(
     if df is None:
         files = [f for f in os.listdir(root)
                  if f[-3:] == ".pt" and f[0] != "."]
+        print(files[133])
     else:
+        if "embedding_file" not in df.columns:
+            raise ValueError("df must have a embedding_file columns")
         files = df.embedding_file
 
     paths: List[PathLike] = [Path(root) / embeddings_file
@@ -60,20 +63,3 @@ def query(
     sorted_sim, sorted_indices = torch.sort(similarities, descending=True)
 
     return sorted_sim[:top], sorted_indices[:top],
-
-
-if __name__ == "__main__":
-    space = torch.Tensor([
-        [0, 0, 0],
-        [1, 1, 1],
-        [65, 0, 99],
-        [3, 4, 5]
-    ])
-
-    assert space.shape == (4, 3)
-
-    v = 3*torch.ones(3)
-
-    sim = F.cosine_similarity(v, space)
-    val, ind = torch.sort(sim, descending=True)
-    print(space[ind][:3])
