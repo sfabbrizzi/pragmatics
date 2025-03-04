@@ -1,6 +1,8 @@
 paths:
   root: "../"
-  input: "data/sdxl-turbo/postal_worker"
+  input: "data/sdxl-turbo/various_nationalities"
+  # input: "data/sdxl-turbo/postal_worker"
   # input: "data/flux-schnell/german_man"
-  output: "data/embeddings/image/sdxl-turbo/postal_worker"
+  output: "data/embeddings/image/sdxl-turbo/various_nationalities"
+  # output: "data/embeddings/image/sdxl-turbo/postal_worker"
   # output: "data/embeddings/image/flux-schnell/german_man"

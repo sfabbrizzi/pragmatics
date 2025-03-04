@@ -1,15 +1,16 @@
 paths:
   root: "../"
-  input: "data/sdxl-turbo/postal_worker" 
+  input: "data/sdxl-turbo/various_nationalities"
+  # input: "data/sdxl-turbo/postal_worker"
   # input: "data/flux-schnell/german_man"
-  output: "results/postal_worker_descriptions.csv"
+  output: "results/various_nationalities_descriptions_llava-phi3.csv"
   # output: "data/embeddings/flux-schnell/german_man"
 
 extraction:
   model: "llava-phi3"
   system_message: "You are an expert in interpreting images, your task is to describe\
-    \ a given image accurately.\nOrganise the description in paragraphs\n\nRemember\
+    \ a given image accurately.\n\nRemember\
     \ to always describe:\n\t1) the background,\n\t2) the objects that appear in the\
-    \ image,\n\t3) the people that appear in the image."
-  prompt: "describe the following image:"
+    \ image,\n\t3) the people that appear in the image,\n\t4) their actions."
+  prompt: "What is in this image?"
   seed: 567

@@ -25,6 +25,10 @@ def main(cfg: DictConfig) -> None:
     df: pd.DataFrame = pd.DataFrame(columns=["image", "description"])
 
     for image_path in os.listdir(input_path):
+        if image_path[0] == ".":
+            continue
+        if not os.path.isfile(input_path / image_path):
+            continue
         response: ollama.ChatResponse = ollama.chat(
             model=cfg.extraction.model,
             messages=[

@@ -40,6 +40,10 @@ def main(cfg: DictConfig) -> None:
     )
 
     for file_name in os.listdir(input_path):
+        if file_name[0] == ".":
+            continue
+        if not os.path.isfile(input_path / file_name):
+            continue
         image: Image = Image.open(input_path / file_name)
         with torch.no_grad():
             inputs: torch.Tensor = processor(

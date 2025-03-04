@@ -4,6 +4,7 @@ import ollama
 import os
 import pandas as pd
 import pydantic
+import re
 
 # vqa
 from PIL import Image
@@ -19,10 +20,6 @@ from os import PathLike
 from typing import List, Literal
 
 # ours
-from src.queries import (
-    load_embeddings,
-    query
-)
 from src.random_walks import RandomWalk
 
 
@@ -36,15 +33,20 @@ class Answer(pydantic.BaseModel):
 
 # PATHS
 ROOT: PathLike = Path("../")
-IMAGES: PathLike = ROOT / "data/sdxl-turbo/postal_worker"
+# IMAGES: PathLike = ROOT / "data/sdxl-turbo/postal_worker"
+# IMAGE_EMB: PathLike = ROOT / "data/embeddings/image/sdxl-turbo"
+# DF: PathLike = ROOT / "results/postal_worker_descriptions_llava-phi3.csv"
+# DF_CHUNKS: PathLike = ROOT / "results/postal_worker_chunks.csv"
+
+IMAGES: PathLike = ROOT / "data/sdxl-turbo/various_nationalities"
 IMAGE_EMB: PathLike = ROOT / "data/embeddings/image/sdxl-turbo"
-DF: PathLike = ROOT / "results/postal_worker_descriptions.csv"
-DF_CHUNKS: PathLike = ROOT / "results/postal_worker_chunks.csv"
+DF: PathLike = (ROOT /
+                "results/various_nationalities_descriptions_llava-phi3.csv")
 
 # OTHERS
-SEED: int = 1_789
+SEED: int = 1_917
 N_STEPS: int = 4
-MAX_ITER: int = 4
+MAX_ITER: int = 5
 
 # Seeding
 seed_everything(SEED)
@@ -52,7 +54,6 @@ torch.mps.manual_seed(SEED)
 
 # Set up
 df = pd.read_csv(DF)
-df_chunks = pd.read_csv(DF_CHUNKS)
 
 image_emb_space: torch.Tensor = torch.stack(
     [torch.load(IMAGE_EMB / f"{file_name[:-4]}.pt")
@@ -78,31 +79,17 @@ for i in range(MAX_ITER):
     print(steps)
     report += "### Walked images:\n"
     for s in steps:
-        report += f"![{s}.png](../data/sdxl-turbo/postal_worker/{s}.png)"
+        report += (f"![{s}]"
+                   f"(../data/sdxl-turbo/{df.loc[s, "image"]})")
     report += "\n\n"
 
     # STEP 2: Retrieve text
-    chunks = df_chunks.merge(
-        df.loc[steps], how="right", on="image").reset_index()
+    # chunks = df_chunks.merge(
+    #     df.loc[steps], how="right", on="image").reset_index()
 
     # STEP 3: LLM -> Common Patterns
-    space = load_embeddings("./", chunks)
-    best_median = 0
-    for chunk in chunks.chunk:
-        # SELEZIONA IL CHUNK CON COS SIM MEDIANA PIU ALTA
-        simil, indices = query(
-            model="mxbai-embed-large",
-            prompt=chunk,
-            embedding_space=space
-        )
-        if torch.median(simil) >= best_median:
-            best_median = torch.median(simil)
-            best_chunk = chunk
-            most_similar = indices[simil >= .8]
-
-    cumulative_chunks = "\n\n----------\n\n".join(
-        chunks.loc[most_similar].chunk)
-    # cumulative_chunks = "\n\n----------\n\n".join(chunks.chunk)
+    cumulative_descr = "\n\n----------\n\n".join(
+        df.loc[steps, "description"])
 
     response: ollama.ChatResponse = ollama.chat(
         model="deepseek-r1:8b",
@@ -117,29 +104,33 @@ for i in range(MAX_ITER):
                     Formulate hypotheses on the content of the
                     dataset in the form of questions.
 
-                    IMPORTANT! The question must allow only answers like
-                    'yes', 'no', or 'I do not know'.
+                    IMPORTANT! The questions must allow only answers like
+                    'yes' or 'no'.
 
                     Example 1 - Relevant aspects: the images show
                                     people playing with dogs.
                             Questions:
-                                1) Does the image show a dog?
-                                2) Does the image show a person?
-                                3) Are there a dog and a person playing?
+                                Does the image show a dog?
+                                Does the image show a person?
+                                Are there a dog and a person playing?
 
                     Example 2 - Relevant aspects: The images show a person
                                     wearing white shirt and sunglasses.
                             Questions:
-                                1) Does person wear jeans?
-                                2) Does the person wear sunglasses?
-                                3) Is the shirt red?
+                                Does person wear jeans?
+                                Does the person wear sunglasses?
+                                Is the shirt red?
 
-                    IMPORTANT! Keep the questions as simple as possible.
+                    IMPORTANT! 1) Keep the questions as simple as possible.
+                        2) The only allowed punctuation mark is '?'.
+                        3) MAX 10 words per question.
                     """,
             },
             {
                 'role': 'user',
-                'content': f"{cumulative_chunks}",
+                'content': ("Formulate questions starting from"
+                            "the following descriptions:\n"
+                            f"{cumulative_descr}"),
             }
         ],
         options={"seed": SEED,
@@ -147,7 +138,6 @@ for i in range(MAX_ITER):
         format=Response.model_json_schema()
     )
     response = Response.model_validate_json(response['message']['content'])
-    # report += f"### Common traits\n{response.aspects}\n"
 
     # STEP 4: Formulate Questions
     # STEP 4.1: Ask user to formulate questions
@@ -155,7 +145,8 @@ for i in range(MAX_ITER):
 
     # STEP 4.2: VQA
     report += "### Answers\n"
-    answers = {q: defaultdict(int) for q in questions}
+    answers = {re.sub(r"[\(\[{}\[\)]", "", q): defaultdict(int)
+               for q in questions}
 
     vqa_pipeline = pipeline(
         "visual-question-answering",
@@ -165,11 +156,15 @@ for i in range(MAX_ITER):
     )
 
     for image_name in os.listdir(IMAGES):
-        for q in questions:
+        if image_name[0] == ".":
+            continue
+        if not os.path.isfile(IMAGES / image_name):
+            continue
+        for q in answers.keys():
             image = Image.open(IMAGES / image_name)
 
             vqa_resp = vqa_pipeline(image, q, top_k=1)[0]
-            if vqa_resp["score"] >= .9:
+            if vqa_resp["score"] >= .75:
                 answers[q][vqa_resp["answer"]] += 1
 
     # for image_name in os.listdir(IMAGES):
@@ -189,7 +184,7 @@ for i in range(MAX_ITER):
 
     #         answers[q][answ] += 1
 
-    for q in questions:
+    for q in answers.keys():
         report += q + " --> "
         for answ, no in answers[q].items():
             report += answ + f": {no}" + "\t"
@@ -200,5 +195,5 @@ for i in range(MAX_ITER):
     # if continue_walk != "y":
     #     break
 
-with open(f"../results/walk_report_seed_{SEED}.md", "w") as f:
+with open(f"../results/walk_report_descr_seed_{SEED}.md", "w") as f:
     f.write(report)
