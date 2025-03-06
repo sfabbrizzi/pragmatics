@@ -1,7 +1,7 @@
 # general imports
 import torch
-import hydra
 import os
+import argparse
 
 # clip
 from transformers import CLIPModel, CLIPImageProcessor
@@ -11,24 +11,41 @@ from PIL import Image
 
 # utils
 from pathlib import Path
+from lightning import seed_everything
+from tqdm import tqdm
 
 # typing
-from omegaconf import DictConfig
+from argparse import Namespace
 from os import PathLike
 
 
-@hydra.main(
-    version_base=None,
-    config_path="config",
-    config_name="extract_image_embeddings"
+# initialize parser
+parser = argparse.ArgumentParser("Extract embeddings from the images.")
+
+# paths
+parser.add_argument("--root", default="../")
+parser.add_argument(
+    "--input_path",
+    default="data/sdxl-turbo/postal_worker")
+parser.add_argument(
+    "--output_path",
+    default="data/embeddings/image/sdxl-turbo/postal_worker"
 )
-def main(cfg: DictConfig) -> None:
+
+parser.add_argument("--seed", default=0)
+
+
+def main() -> None:
+    args: Namespace = parser.parse_args()
+
+    seed_everything(args.seed)
+
     device: str = "mps" if torch.backends.mps.is_available() else "cpu"
 
-    ROOT: PathLike = Path(cfg.paths.root)
-    input_path: PathLike = ROOT / cfg.paths.input
+    ROOT: PathLike = Path(args.root)
+    input_path: PathLike = ROOT / args.input_path
 
-    output_path: PathLike = ROOT / cfg.paths.output
+    output_path: PathLike = ROOT / args.output_path
     os.makedirs(output_path, exist_ok=True)
 
     model: CLIPModel = CLIPModel.from_pretrained(
@@ -39,7 +56,7 @@ def main(cfg: DictConfig) -> None:
         return_tensors="pt"
     )
 
-    for file_name in os.listdir(input_path):
+    for file_name in tqdm(os.listdir(input_path)):
         if file_name[0] == ".":
             continue
         if not os.path.isfile(input_path / file_name):
