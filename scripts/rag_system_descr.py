@@ -17,7 +17,7 @@ from lightning import seed_everything
 
 # typing
 from os import PathLike
-from typing import List, Literal
+from typing import List
 
 # ours
 from src.random_walks import RandomWalk
@@ -27,10 +27,6 @@ class Response(pydantic.BaseModel):
     questions: List[str]
 
 
-class Answer(pydantic.BaseModel):
-    answer: Literal["yes", "no", "I do not know"]
-
-
 # PATHS
 ROOT: PathLike = Path("../")
 # IMAGES: PathLike = ROOT / "data/sdxl-turbo/postal_worker"
@@ -38,10 +34,10 @@ ROOT: PathLike = Path("../")
 # DF: PathLike = ROOT / "results/postal_worker_descriptions_llava-phi3.csv"
 # DF_CHUNKS: PathLike = ROOT / "results/postal_worker_chunks.csv"
 
-IMAGES: PathLike = ROOT / "data/sdxl-turbo/various_nationalities"
-IMAGE_EMB: PathLike = ROOT / "data/embeddings/image/sdxl-turbo"
+IMAGES: PathLike = ROOT / "data/sdxl-turbo/postal_worker"
+IMAGE_EMB: PathLike = ROOT / "data/embeddings/image/sdxl-turbo/postal_worker"
 DF: PathLike = (ROOT /
-                "results/various_nationalities_descriptions_llava-phi3.csv")
+                "results/1320_postal_worker_llava-phi3.tsv")
 
 # OTHERS
 SEED: int = 1_917
@@ -53,7 +49,7 @@ seed_everything(SEED)
 torch.mps.manual_seed(SEED)
 
 # Set up
-df = pd.read_csv(DF)
+df = pd.read_csv(DF, sep="|")
 
 image_emb_space: torch.Tensor = torch.stack(
     [torch.load(IMAGE_EMB / f"{file_name[:-4]}.pt")
@@ -80,7 +76,7 @@ for i in range(MAX_ITER):
     report += "### Walked images:\n"
     for s in steps:
         report += (f"![{s}]"
-                   f"(../data/sdxl-turbo/{df.loc[s, "image"]})")
+                   f"({str(IMAGES / df.loc[s, "image"])})")
     report += "\n\n"
 
     # STEP 2: Retrieve text
@@ -128,7 +124,8 @@ for i in range(MAX_ITER):
             },
             {
                 'role': 'user',
-                'content': ("Formulate questions starting from"
+                'content': ("Formulate questions about the content of "
+                            "a group of images starting from"
                             "the following descriptions:\n"
                             f"{cumulative_descr}"),
             }
@@ -145,7 +142,7 @@ for i in range(MAX_ITER):
 
     # STEP 4.2: VQA
     report += "### Answers\n"
-    answers = {re.sub(r"[\(\[{}\[\)]", "", q): defaultdict(int)
+    answers = {re.sub("[|*[{()}]:]|([0-9][.)])", "", q): defaultdict(int)
                for q in questions}
 
     vqa_pipeline = pipeline(
