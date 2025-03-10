@@ -2,6 +2,7 @@
 import torch
 import os
 import argparse
+import numpy as np
 
 # clip
 from transformers import CLIPModel, CLIPImageProcessor
@@ -17,7 +18,7 @@ from tqdm import tqdm
 # typing
 from argparse import Namespace
 from os import PathLike
-
+from numpy.typing import ArrayLike
 
 # initialize parser
 parser = argparse.ArgumentParser("Extract embeddings from the images.")
@@ -26,10 +27,10 @@ parser = argparse.ArgumentParser("Extract embeddings from the images.")
 parser.add_argument("--root", default="../")
 parser.add_argument(
     "--input_path",
-    default="data/celeba/split")
+    default="data/sdxl-turbo/postal_worker")
 parser.add_argument(
     "--output_path",
-    default="data/embeddings/image/celeba/split"
+    default="data/embeddings/image/sdxl-turbo/postal_worker"
 )
 
 parser.add_argument("--seed", default=0)
@@ -64,15 +65,16 @@ def main() -> None:
         if not os.path.isfile(input_path / file_name):
             continue
         image: Image = Image.open(input_path / file_name)
+
         with torch.no_grad():
-            inputs: torch.Tensor = processor(
+            inputs: ArrayLike = processor(
                 image
             )["pixel_values"][0].reshape(1, 3, 224, -1)
             outputs: torch.Tensor = model.get_image_features(
                 torch.from_numpy(inputs).to(device)
-            ).cpu().reshape(-1)
+            ).cpu().reshape(-1).numpy()
 
-        torch.save(outputs, output_path / f"{file_name[:-4]}.pt")
+        np.save(output_path / f"{file_name[:-4]}.npy", outputs)
 
 
 if __name__ == "__main__":

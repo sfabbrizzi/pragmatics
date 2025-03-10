@@ -1,14 +1,17 @@
 # general imports
-import torch
+import numpy as np
 import pytest
+
+# typing
+from numpy.typing import ArrayLike
 
 # ours
 from src.random_walks import RandomWalk
 
 
 @pytest.fixture
-def space() -> torch.Tensor:
-    space_tensor = torch.Tensor(
+def space() -> ArrayLike:
+    space_arr = np.array(
         [[0, 0, 0],
          [1, 1, 1],
          [9, 4, 2],
@@ -20,12 +23,12 @@ def space() -> torch.Tensor:
          [99, 3, 1]]
     )
 
-    return space_tensor
+    return space_arr
 
 
 @pytest.fixture
-def space_repeat_row() -> torch.Tensor:
-    space_tensor = torch.Tensor(
+def space_repeat_row() -> ArrayLike:
+    space_arr = np.array(
         [[0, 0, 0],
          [1, 1, 1],
          [9, 4, 2],
@@ -38,16 +41,20 @@ def space_repeat_row() -> torch.Tensor:
          [99, 3, 1]]
     )
 
-    return space_tensor
+    return space_arr
 
 
 def test_init(
-        space: torch.Tensor,
-        space_repeat_row: torch.Tensor
+        space: ArrayLike,
+        space_repeat_row: ArrayLike
 ) -> None:
 
     rw: RandomWalk = RandomWalk(space, 0)
     assert (rw.space == space).all()
+    assert len(rw.available_index) == len(space)-1
+
+    rw: RandomWalk = RandomWalk(space, 0, 4)
+    assert len(rw.available_index) == 4
 
     with pytest.raises(ValueError):
         RandomWalk(space_repeat_row, 0)
@@ -57,42 +64,37 @@ def test_init(
         RandomWalk(space, len(space))
     with pytest.raises(ValueError):
         RandomWalk(space, -1)
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         RandomWalk(space, "check")
 
-    rw_none: RandomWalk = RandomWalk(space)  # v0 = None
-    assert isinstance(rw_none.v0, int)
+    rw_none: RandomWalk = RandomWalk(space, None)  # v0 = None
+    assert isinstance(rw_none.walked[0], int)
 
 
-def test_step(space: torch.Tensor) -> None:
-    rw: RandomWalk = RandomWalk(space, 0)
+def test_step(space: ArrayLike) -> None:
+    rw: RandomWalk = RandomWalk(space, 0, 4)
 
     n_available: int = len(rw.available_index)
 
-    new_v: int = rw.step(4)
-    new_v1: int = rw.step(rw.v0)
-    new_v2: int = rw.step(2, uniform=True)
+    new_v: int = rw.step()
+    assert len(rw.available_index) == n_available-1
+    new_v1: int = rw.step()
+    assert len(rw.available_index) == n_available-2
+    new_v2: int = rw.step()
+    assert len(rw.available_index) == n_available-3
 
-    assert len(rw.available_index) == n_available
     assert isinstance(new_v, int)
     assert isinstance(new_v1, int)
     assert isinstance(new_v2, int)
 
-    with pytest.raises(ValueError):
-        rw.step(81)
-    with pytest.raises(ValueError):
-        rw.step(-1)
-    with pytest.raises(ValueError):
-        rw.step("check")
 
-
-def test_walk(space: torch.Tensor) -> None:
+def test_walk(space: ArrayLike) -> None:
     rw: RandomWalk = RandomWalk(space, 0)
     assert len(rw.available_index) == len(space)-1
 
     rw.walk(2)
     assert len(rw.available_index) == len(space)-3
-    rw.walk(2, first_step_unifrom=True)
+    rw.walk(2)
     assert len(rw.available_index) == len(space)-5
 
     with pytest.raises(ValueError):
@@ -107,3 +109,12 @@ def test_walk(space: torch.Tensor) -> None:
 
     with pytest.raises(ValueError):
         rw.walk(1)
+
+
+def test_random_step(space: ArrayLike) -> None:
+    rw: RandomWalk = RandomWalk(space, 0, 4)
+    rw.step()
+    assert len(rw.walked) == 2
+    rw.uniform_step()
+    assert len(rw.walked) == 3
+    assert len(set(rw.walked)) == 3

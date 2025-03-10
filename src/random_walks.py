@@ -1,34 +1,36 @@
 # general imports
-import torch
 import random
 import numpy as np
 
-# torch
-from torch.nn import Softmax
+# scipy and sklearn
+from scipy.special import softmax
+from sklearn.neighbors import NearestNeighbors
 
 # typing
 from typing import Optional, List
-
-# our
-from src.geometry import compute_distances
+from numpy.typing import ArrayLike
 
 
 class RandomWalk():
     def __init__(
         self,
-        space: torch.Tensor,
-        v0: Optional[int] = None
+        space: ArrayLike,
+        v0: Optional[int] = None,
+        n_neighbours: int = 20
     ) -> None:
-        """Implements a random walk on a set of points
-        in a embedding space.
+        """Implements a random walk on a nearest neighbours set
+        of the given starting point in a embedding space.
 
         Parameters
         ----------
-        space : torch.Tensor
+        space : ArrayLike
             the embeddings of the points.
         v0 : Optional[int]
             the index of the starting point,
             if None the index is chosen randomly.
+        n_neighbours: int
+            the number of nearest neighbours to
+            take into account
 
         Raises
         ------
@@ -37,123 +39,146 @@ class RandomWalk():
             [0, space.shape[0]) or None
         ValueError
             space must have only unique rows,
-            apply torch.unique(space, dim=0)
+            apply np.unique(space, axis=0)
         """
 
-        if space.shape[0] != torch.unique(space, dim=0).shape[0]:
+        if space.shape[0] != np.unique(space, axis=0).shape[0]:
             raise ValueError("space must have only unique rows, "
-                             "apply torch.unique(space, dim=0)")
-        else:
-            self.space = space
+                             "apply np.unique(space, axis=0)")
+        self.space = space
 
         if v0 is None:
-            self.v0 = random.randint(0, space.shape[0]-1)
-        elif isinstance(v0, int) and (v0 >= 0) and (v0 < space.shape[0]):
-            self.v0 = v0
-        else:
+            self.walked = [random.randint(0, len(space)-1)]
+        elif v0 < 0 or v0 >= len(space):
             raise ValueError(
-                "v0 must be an integer in the range "
+                "v0 must be an integer in the range"
                 "[0, space.shape[0]) or None"
             )
-        self.walk_list = [self.v0]
+        else:
+            self.walked = [v0]
 
-        self.available_index = np.delete(np.arange(space.shape[0]), self.v0)
-        self.softmax = Softmax(dim=0)
+        self.nn: NearestNeighbors = NearestNeighbors(
+            n_neighbors=min(n_neighbours + 1, len(space))
+        ).fit(space)
 
-    def step(self, v: int, uniform: bool = False) -> int:
-        """performs a step strating from a given
-        point in space.
+        _, indices = self.nn.kneighbors(space[self.walked[0]].reshape(1, -1))
+
+        self.available_index: ArrayLike = np.delete(
+            indices.reshape(-1),
+            0
+        )
+
+    def recompute_neighbours(self, v0: int) -> None:
+        """Recomputes the Nearest Neighbours
 
         Parameters
         ----------
-        v : int
-            index of the starting point.
+        v0 : int
+            index of the point to compute the neighbours of
+        """
+        _, indices = self.nn.kneighbors(self.space[v0].reshape(1, -1))
 
-        uniform : bool, default False
-            if true the step next step is drawn
-            from uniform probability.
+        self.available_index: ArrayLike = np.delete(
+            indices.reshape(-1),
+            0
+        )
+
+        self.walked.append(v0)
+
+    def uniform_step(self) -> int:
+        """performs a uniformm step
 
         Returns
         -------
         int
-            index of the new point reached.
-
-        Raises
-        ------
-        ValueError
-            the index v must be in [0, self.space.shape[0]).
+            the newly walked index.
         """
-        if v not in range(0, self.space.shape[0]):
-            raise ValueError("the index v must be in [0, self.space.shape[0])")
+        unwalked = np.array(
+            [i for i in np.arange(len(self.space)) if i not in self.walked]
+        )
+        probabilities = np.ones_like(unwalked) / len(unwalked)
+        v_new = np.random.choice(
+            unwalked,
+            p=probabilities
+        ).item()
+        self.recompute_neighbours(v_new)
 
-        if not uniform:
-            distances = compute_distances(
-                self.space[v],
-                self.space[self.available_index]
-            )
-            probabilities = self.softmax(-distances)
+        return v_new
 
-            v_new = np.random.choice(
-                self.available_index,
-                p=probabilities.numpy()
-            ).item()
-        else:
-            v_new = np.random.choice(
-                self.available_index,
-                p=np.ones_like(self.available_index) /
-                len(self.available_index)
-            ).item()
+    def step(self) -> int:
+        """performs a step if the random walk.
+
+        Returns
+        -------
+        int
+            the newly walked index.
+        """
+        distances = np.linalg.norm(
+            self.space[self.available_index] - self.space[self.walked[-1]],
+            axis=1
+        )
+
+        probabilities = softmax(-distances).reshape(-1)
+
+        v_new = np.random.choice(
+            self.available_index,
+            p=probabilities
+        ).item()
+
+        self.walked.append(v_new)
+        self.available_index = np.delete(
+            self.available_index,
+            np.where(self.available_index == v_new)[0]
+        )
 
         return v_new
 
     def walk(
             self,
-            steps: int,
-            first_step_unifrom: bool = False
+            steps: int
     ) -> List[int]:
-        """perform a walk of a given numebr of steps
-        starting from the last registered step.
+        """Performs the random walk.
 
         Parameters
         ----------
         steps : int
             number of steps.
 
-        first_step_uniform: bool, default False
-            if true, first  is drawn uniformely.
-
         Returns
         -------
         List[int]
-            returns the list of steps done
+            the currently walked indices.
 
         Raises
         ------
         ValueError
-            raises error if too many steps are requested and
-            the space is not big enough.
+            too many steps, the space is not big enough.
         """
         if steps > len(self.available_index):
             raise ValueError("too many steps, the space is not big enough.")
 
-        current_walk = [self.walk_list[-1]]
-
-        for i in range(0, steps):
-            if i == 0:
-                v_new = self.step(
-                    self.walk_list[-1],
-                    uniform=first_step_unifrom
-                )
-            else:
-                v_new = self.step(
-                    self.walk_list[-1],
-                    uniform=False)
-            self.walk_list.append(v_new)
+        current_walk = [self.walked[-1]]
+        for _ in range(0, steps):
+            v_new = self.step()
             current_walk.append(v_new)
 
-            self.available_index = np.delete(
-                self.available_index,
-                np.where(self.available_index == v_new)[0],
-            )
-
         return current_walk
+
+
+if __name__ == "__main__":
+    space = np.array(
+        [[0, 0, 0],
+         [1, 1, 1],
+         [9, 4, 2],
+         [9, 4, 1],
+         [100, 98, 21],
+         [3, 5, 6],
+         [0, 0, 1],
+         [0, 100, 100],
+         [99, 3, 1]]
+    )
+
+    print(len(space))
+
+    rw = RandomWalk(space, 0, 4)
+    print(rw.walk(2))

@@ -6,6 +6,7 @@ import pandas as pd
 import pydantic
 import re
 import argparse
+import numpy as np
 
 # vqa
 # from PIL import Image
@@ -20,6 +21,7 @@ from pathlib import Path
 from typing import List
 from argparse import Namespace
 from os import PathLike
+from numpy.typing import ArrayLike
 
 # ours
 from src.random_walks import RandomWalk
@@ -63,8 +65,8 @@ def main():
     ROOT: PathLike = Path(args.root)
     df: pd.DataFrame = pd.read_csv(ROOT / args.df_path, sep="|")
 
-    image_emb_space: torch.Tensor = torch.stack(
-        [torch.load(ROOT / args.embeddings_path / f"{file_name[:-4]}.pt")
+    image_emb_space: ArrayLike = np.stack(
+        [np.load(ROOT / args.embeddings_path / f"{file_name[:-4]}.npy")
          for file_name in df.image]
     )
 
@@ -80,10 +82,12 @@ def main():
             steps = rw.walk(args.n_steps)
             first_walk = False
         else:
-            steps = rw.walk(
-                args.n_steps + 1,
-                first_step_unifrom=True
+            steps: List[int] = list()
+            steps.append(rw.uniform_step())
+            steps += rw.walk(
+                args.n_steps,
             )[1:]
+
         print(steps)
         report += "### Walked images:\n"
         for s in steps:
