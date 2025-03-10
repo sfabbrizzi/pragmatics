@@ -1,23 +1,25 @@
 # general imports
 import torch
 import ollama
-import os
+# import os
 import pandas as pd
 import pydantic
 import re
+import argparse
 
 # vqa
-from PIL import Image
-from transformers import pipeline
+# from PIL import Image
+# from transformers import pipeline
 
 # utils
-from pathlib import Path
 from collections import defaultdict
 from lightning import seed_everything
+from pathlib import Path
 
 # typing
-from os import PathLike
 from typing import List
+from argparse import Namespace
+from os import PathLike
 
 # ours
 from src.random_walks import RandomWalk
@@ -27,170 +29,156 @@ class Response(pydantic.BaseModel):
     questions: List[str]
 
 
-# PATHS
-ROOT: PathLike = Path("../")
-# IMAGES: PathLike = ROOT / "data/sdxl-turbo/postal_worker"
-# IMAGE_EMB: PathLike = ROOT / "data/embeddings/image/sdxl-turbo"
-# DF: PathLike = ROOT / "results/postal_worker_descriptions_llava-phi3.csv"
-# DF_CHUNKS: PathLike = ROOT / "results/postal_worker_chunks.csv"
+# initialize parser
+parser = argparse.ArgumentParser("RAG.")
 
-IMAGES: PathLike = ROOT / "data/sdxl-turbo/postal_worker"
-IMAGE_EMB: PathLike = ROOT / "data/embeddings/image/sdxl-turbo/postal_worker"
-DF: PathLike = (ROOT /
-                "results/1320_postal_worker_llava-phi3.tsv")
-
-# OTHERS
-SEED: int = 1_917
-N_STEPS: int = 4
-MAX_ITER: int = 5
-
-# Seeding
-seed_everything(SEED)
-torch.mps.manual_seed(SEED)
-
-# Set up
-df = pd.read_csv(DF, sep="|")
-
-image_emb_space: torch.Tensor = torch.stack(
-    [torch.load(IMAGE_EMB / f"{file_name[:-4]}.pt")
-     for file_name in df.image]
+# paths
+parser.add_argument("--root", default="../")
+parser.add_argument(
+    "--images_path",
+    default="data/sdxl-turbo/postal_worker"
+)
+parser.add_argument(
+    "--embeddings_path",
+    default="data/embeddings/image/sdxl-turbo/postal_worker"
+)
+parser.add_argument(
+    "--df_path",
+    default="results/1320_postal_worker_llava-phi3.tsv"
 )
 
-rw: RandomWalk = RandomWalk(space=image_emb_space, v0=None)
-first_walk: bool = True
+parser.add_argument("--seed", default=1917)
+parser.add_argument("--n_steps", default=4)
+parser.add_argument("--n_iter", default=10)
 
-report: str = "# Report\n\n"
 
-for i in range(MAX_ITER):
-    report += f"## Step {i}\n\n"
-    # STEP 1: Random Walk
-    if first_walk:
-        steps = rw.walk(N_STEPS)
-        first_walk = False
-    else:
-        steps = rw.walk(
-            N_STEPS + 1,
-            first_step_unifrom=True
-        )[1:]
-    print(steps)
-    report += "### Walked images:\n"
-    for s in steps:
-        report += (f"![{s}]"
-                   f"({str(IMAGES / df.loc[s, "image"])})")
-    report += "\n\n"
+def main():
+    args: Namespace = parser.parse_args()
 
-    # STEP 2: Retrieve text
-    # chunks = df_chunks.merge(
-    #     df.loc[steps], how="right", on="image").reset_index()
+    # seeding
+    seed_everything(args.seed)
+    torch.mps.manual_seed(args.seed)
 
-    # STEP 3: LLM -> Common Patterns
-    cumulative_descr = "\n\n----------\n\n".join(
-        df.loc[steps, "description"])
+    # Set up
+    ROOT: PathLike = Path(args.root)
+    df: pd.DataFrame = pd.read_csv(ROOT / args.df_path, sep="|")
 
-    response: ollama.ChatResponse = ollama.chat(
-        model="deepseek-r1:8b",
-        messages=[
-            {
-                'role': 'system',
-                'content': """Given a series of texts separated
-                    by '\\n\\n----------\\n\\n' in input, your task
-                    is to find the relevant aspects of them.
+    image_emb_space: torch.Tensor = torch.stack(
+        [torch.load(ROOT / args.embeddings_path / f"{file_name[:-4]}.pt")
+         for file_name in df.image]
+    )
 
-                    These texts describe a subset of a dataset.
-                    Formulate hypotheses on the content of the
-                    dataset in the form of questions.
+    rw: RandomWalk = RandomWalk(space=image_emb_space, v0=None)
+    first_walk: bool = True
 
-                    IMPORTANT! The questions must allow only answers like
-                    'yes' or 'no'.
+    report: str = "# Report\n\n"
 
-                    Example 1 - Relevant aspects: the images show
+    for i in range(args.n_iter):
+        report += f"## Step {i}\n\n"
+        # STEP 1: Random Walk
+        if first_walk:
+            steps = rw.walk(args.n_steps)
+            first_walk = False
+        else:
+            steps = rw.walk(
+                args.n_steps + 1,
+                first_step_unifrom=True
+            )[1:]
+        print(steps)
+        report += "### Walked images:\n"
+        for s in steps:
+            report += (
+                f"![{s}]"
+                f"({str(ROOT / args.images_path / df.loc[s, "image"])})"
+            )
+        report += "\n\n"
+
+        # STEP 2: LLM -> Common Patterns
+        cumulative_descr = "\n\n----------\n\n".join(
+            df.loc[steps, "description"])
+
+        response: ollama.ChatResponse = ollama.chat(
+            model="deepseek-r1:8b",
+            messages=[
+                {
+                    'role': 'system',
+                    'content': """Given a series of image descriptions
+                        separated by '\\n\\n----------\\n\\n',
+                        your task is to formulate hypotheses on the
+                        content ofthe dataset these images are from
+                        in the form of questions.
+
+                        Example 1 - the images show
                                     people playing with dogs.
                             Questions:
-                                Does the image show a dog?
-                                Does the image show a person?
-                                Are there a dog and a person playing?
+                                1) Does the image show a dog?
+                                2) Does the image show a person?
+                                3) Are there a dog and a person playing?
 
-                    Example 2 - Relevant aspects: The images show a person
+                        Example 2 - The images show a person
                                     wearing white shirt and sunglasses.
                             Questions:
-                                Does person wear jeans?
-                                Does the person wear sunglasses?
-                                Is the shirt red?
+                                1) Does person wear jeans?
+                                2) Does the person wear sunglasses?
+                                3) Is the shirt red?
 
-                    IMPORTANT! 1) Keep the questions as simple as possible.
-                        2) The only allowed punctuation mark is '?'.
-                        3) MAX 10 words per question.
-                    """,
-            },
-            {
-                'role': 'user',
-                'content': ("Formulate questions about the content of "
-                            "a group of images starting from"
-                            "the following descriptions:\n"
-                            f"{cumulative_descr}"),
-            }
-        ],
-        options={"seed": SEED,
-                 "num_ctx": 30_000},
-        format=Response.model_json_schema()
-    )
-    response = Response.model_validate_json(response['message']['content'])
+                        IMPORTANT:
+                            - Keep the questions as simple as possible.
+                            - avoid using and clauses.
+                            - The only allowed punctuation mark is '?'.
+                            - MAX 10 words per question.
+                        """,
+                },
+                {
+                    'role': 'user',
+                    'content': ("Formulate questions from:"
+                                f"{cumulative_descr}"),
+                }
+            ],
+            options={"args.seed": args.seed,
+                     "num_ctx": 30_000},
+            format=Response.model_json_schema()
+        )
+        response = Response.model_validate_json(response['message']['content'])
 
-    # STEP 4: Formulate Questions
-    # STEP 4.1: Ask user to formulate questions
-    questions = response.questions
+        # STEP 4: Formulate Questions
+        # STEP 4.2: VQA
+        report += "### Answers\n"
+        answers: dict = {
+            re.sub("[|*[{()}]:]|([0-9][.)])", "", q): defaultdict(int)
+            for q in response.questions
+        }
 
-    # STEP 4.2: VQA
-    report += "### Answers\n"
-    answers = {re.sub("[|*[{()}]:]|([0-9][.)])", "", q): defaultdict(int)
-               for q in questions}
+        # vqa_pipeline = pipeline(
+        #     "visual-question-answering",
+        #     model="dandelin/vilt-b32-finetuned-vqa",
+        #     device="mps" if torch.backends.mps.is_available() else "cpu",
+        #     use_fast=True
+        # )
 
-    vqa_pipeline = pipeline(
-        "visual-question-answering",
-        model="dandelin/vilt-b32-finetuned-vqa",
-        device="mps" if torch.backends.mps.is_available() else "cpu",
-        use_fast=True
-    )
+        # for image_name in os.listdir(args.images_path):
+        #     if image_name[0] == ".":
+        #         continue
+        #     if not os.path.isfile(args.images_path / image_name):
+        #         continue
+        #
+        #     image = Image.open(args.images_path / image_name)
 
-    for image_name in os.listdir(IMAGES):
-        if image_name[0] == ".":
-            continue
-        if not os.path.isfile(IMAGES / image_name):
-            continue
+        #     vqa_resp = vqa_pipeline(image, q, top_k=1)[0]
+        #     if vqa_resp["score"] >= .75:
+        #         answers[q][vqa_resp["answer"]] += 1
+
         for q in answers.keys():
-            image = Image.open(IMAGES / image_name)
+            report += q + " --> "
+            # for answ, no in answers[q].items():
+            #     report += answ + f": {no}" + "\t"
+            report += "\n"
 
-            vqa_resp = vqa_pipeline(image, q, top_k=1)[0]
-            if vqa_resp["score"] >= .75:
-                answers[q][vqa_resp["answer"]] += 1
+    with open(
+        f"../results/walk_report_descr_args.seed_{args.seed}.md", "w"
+    ) as f:
+        f.write(report)
 
-    # for image_name in os.listdir(IMAGES):
-    #     for q in questions:
-    #         response = ollama.chat(
-    #             model='llava-phi3',
-    #             messages=[{
-    #                 'role': 'user',
-    #                 'content': q,
-    #                 'images': [IMAGES / image_name]
-    #             }],
-    #             format=Answer.model_json_schema()
-    #         )
-    #         answ = Answer.model_validate_json(
-    #             response['message']['content']
-    #         ).answer
 
-    #         answers[q][answ] += 1
-
-    for q in answers.keys():
-        report += q + " --> "
-        for answ, no in answers[q].items():
-            report += answ + f": {no}" + "\t"
-        report += "\n"
-
-    # Step 5: Continue walking
-    # continue_walk: str = input("Press y to continue walking ")
-    # if continue_walk != "y":
-    #     break
-
-with open(f"../results/walk_report_descr_seed_{SEED}.md", "w") as f:
-    f.write(report)
+if __name__ == "__main__":
+    main()

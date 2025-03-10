@@ -26,10 +26,10 @@ parser = argparse.ArgumentParser("Extract embeddings from the images.")
 parser.add_argument("--root", default="../")
 parser.add_argument(
     "--input_path",
-    default="data/sdxl-turbo/postal_worker")
+    default="data/celeba/split")
 parser.add_argument(
     "--output_path",
-    default="data/embeddings/image/sdxl-turbo/postal_worker"
+    default="data/embeddings/image/celeba/split"
 )
 
 parser.add_argument("--seed", default=0)
@@ -41,6 +41,8 @@ def main() -> None:
     seed_everything(args.seed)
 
     device: str = "mps" if torch.backends.mps.is_available() else "cpu"
+    if device == "mps":
+        torch.mps.manual_seed(args.seed)
 
     ROOT: PathLike = Path(args.root)
     input_path: PathLike = ROOT / args.input_path

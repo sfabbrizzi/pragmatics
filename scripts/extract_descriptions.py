@@ -20,10 +20,10 @@ parser = argparse.ArgumentParser("Extract descriptions from the images.")
 parser.add_argument("--root", default="../")
 parser.add_argument(
     "--input_path",
-    default="data/sdxl-turbo/postal_worker")
+    default="data/celeba/split")
 parser.add_argument(
     "--output_path",
-    default="results/postal_worker_descriptions_llava-phi3.tsv"
+    default="results/celeba_split_descriptions_llava-phi3.tsv"
 )
 # generation
 parser.add_argument("--model", default="llava-phi3")
@@ -74,7 +74,7 @@ def main() -> None:
             )
 
             description: str = re.sub(
-                pattern="[\\n\\t|*[{()}]]|([0-9][.)]",
+                pattern="[\\n\\t|*[{()}]]|([0-9][.)])",
                 repl=" ",
                 string=response.message.content
             ).strip()
